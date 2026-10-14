@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Notepad</title>
+<style>
+  :root {
+    --paper: #fff9c9;
+    --paper-edge: #f3e9a0;
+    --ink: #1f2a44;
+    --ink-soft: #5b6585;
+    --rule: #b9cde8;
+    --margin: #e2706f;
+    --accent: #1f3f8f;
+    --accent-ink: #ffffff;
+    --danger: #b3261e;
+    --line: 32px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #1d2233;
+      --paper-edge: #2a3046;
+      --ink: #e8ecf8;
+      --ink-soft: #9aa4c4;
+      --rule: #2e3650;
+      --margin: #a8484a;
+      --accent: #8fb1ff;
+      --accent-ink: #0f1626;
+      --danger: #ff8a80;
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow: hidden;
+  }
+
+  .view { display: none; height: 100%; flex-direction: column; }
+  .view.active { display: flex; }
+
+  button {
+    font: inherit; color: inherit; background: none; border: 0; cursor: pointer;
+  }
+  button:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* ---------- List view ---------- */
+  .list-head {
+    padding: 20px 20px 12px;
+    border-bottom: 2px solid var(--margin);
+  }
+  .list-head h1 {
+    margin: 0 0 12px;
+    font: 700 28px/1.1 ui-serif, Georgia, "Times New Roman", serif;
+    letter-spacing: -0.01em;
+  }
+  .search {
+    width: 100%; padding: 10px 12px; font: inherit; color: var(--ink);
+    background: transparent; border: 1.5px solid var(--rule); border-radius: 6px;
+  }
+  .search::placeholder { color: var(--ink-soft); }
+
+  .notes { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 0 0 96px; }
+  .notes li { border-bottom: 1px solid var(--rule); }
+  .note-row {
+    display: block; width: 100%; text-align: left;
+    padding: 14px 20px 14px 28px;
+    border-left: 2px solid var(--margin);
+    margin-left: 12px;
+  }
+  .note-row:active { background: var(--paper-edge); }
+  .note-title {
+    display: block; font-weight: 600; font-size: 17px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .note-preview {
+    display: block; margin-top: 2px; color: var(--ink-soft); font-size: 14px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .note-date { display: block; margin-top: 4px; color: var(--ink-soft); font-size: 12px; }
+
+  .empty { padding: 48px 32px; text-align: center; color: var(--ink-soft); line-height: 1.5; }
+
+  .fab {
+    position: fixed; right: 20px;
+    bottom: calc(20px + env(safe-area-inset-bottom));
+    padding: 14px 22px; border-radius: 999px;
+    background: var(--accent); color: var(--accent-ink);
+    font-weight: 600; font-size: 16px;
+    box-shadow: 0 4px 14px rgba(20, 30, 70, .3);
+  }
+  .fab:active { transform: scale(.97); }
+
+  /* ---------- Editor view ---------- */
+  .bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 8px; border-bottom: 2px solid var(--margin);
+  }
+  .bar button { padding: 10px 14px; border-radius: 6px; font-weight: 600; }
+  .bar .back { color: var(--accent); }
+  .bar .delete { color: var(--danger); }
+  .bar .saved { color: var(--ink-soft); font-size: 13px; }
+
+  .title-input {
+    width: 100%; border: 0; background: transparent; color: var(--ink);
+    padding: 14px 20px 6px 28px;
+    font: 700 24px/1.3 ui-serif, Georgia, "Times New Roman", serif;
+  }
+  .title-input::placeholder { color: var(--ink-soft); opacity: .7; }
+
+  .body-input {
+    flex: 1; width: 100%; resize: none; border: 0; color: var(--ink);
+    padding: 0 20px 96px 28px;
+    font: 18px/var(--line) ui-serif, Georgia, "Times New Roman", serif;
+    background-color: transparent;
+    background-image: repeating-linear-gradient(
+      to bottom, transparent 0, transparent calc(var(--line) - 1px),
+      var(--rule) calc(var(--line) - 1px), var(--rule) var(--line)
+    );
+    background-attachment: local;
+  }
+  .body-input::placeholder { color: var(--ink-soft); opacity: .7; }
+  .editor-wrap {
+    flex: 1; display: flex; flex-direction: column; min-height: 0;
+    border-left: 2px solid var(--margin); margin-left: 12px;
+  }
+  .editor-wrap .title-input { padding-left: 16px; }
+  .editor-wrap .body-input { padding-left: 16px; }
+
+  /* ---------- Delete dialog ---------- */
+  dialog {
+    border: 0; border-radius: 10px; padding: 22px; max-width: 320px;
+    background: var(--paper); color: var(--ink);
+    box-shadow: 0 10px 40px rgba(0,0,0,.35);
+  }
+  dialog::backdrop { background: rgba(0,0,0,.45); }
+  dialog h2 { margin: 0 0 8px; font-size: 18px; }
+  dialog p { margin: 0 0 18px; color: var(--ink-soft); line-height: 1.4; }
+  .dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .dlg-actions button { padding: 10px 16px; border-radius: 6px; font-weight: 600; }
+  .dlg-cancel { color: var(--ink-soft); }
+  .dlg-confirm { background: var(--danger); color: var(--paper); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<!-- List -->
+<main id="listView" class="view active">
+  <header class="list-head">
+    <h1>Notes</h1>
+    <input id="search" class="search" type="search" placeholder="Search notes" aria-label="Search notes">
+  </header>
+  <ul id="notes" class="notes"></ul>
+  <button id="newBtn" class="fab">New note</button>
+</main>
+
+<!-- Editor -->
+<section id="editView" class="view">
+  <div class="bar">
+    <button id="backBtn" class="back">Back</button>
+    <span id="savedState" class="saved" aria-live="polite"></span>
+    <button id="deleteBtn" class="delete">Delete</button>
+  </div>
+  <div class="editor-wrap">
+    <input id="titleInput" class="title-input" type="text" placeholder="Title" aria-label="Note title" autocomplete="off">
+    <textarea id="bodyInput" class="body-input" placeholder="Start writing" aria-label="Note text"></textarea>
+  </div>
+</section>
+
+<dialog id="confirmDlg">
+  <h2>Delete this note?</h2>
+  <p>This can't be undone.</p>
+  <div class="dlg-actions">
+    <button id="dlgCancel" class="dlg-cancel">Cancel</button>
+    <button id="dlgConfirm" class="dlg-confirm">Delete note</button>
+  </div>
+</dialog>
+
+<script>
+(() => {
+  const KEY = "notepad.notes.v1";
+
+  // ---------- Storage (localStorage, with in-memory fallback) ----------
+  let memoryStore = "[]";
+  const store = {
+    read() {
+      try { return localStorage.getItem(KEY) ?? "[]"; }
+      catch { return memoryStore; }
+    },
+    write(value) {
+      try { localStorage.setItem(KEY, value); }
+      catch { memoryStore = value; }
+    }
+  };
+
+  let notes = [];
+  try { notes = JSON.parse(store.read()); } catch { notes = []; }
+  let currentId = null;
+  let saveTimer = null;
+
+  const $ = (id) => document.getElementById(id);
+  const listView = $("listView"), editView = $("editView");
+  const notesEl = $("notes"), searchEl = $("search");
+  const titleEl = $("titleInput"), bodyEl = $("bodyInput");
+  const savedEl = $("savedState"), dlg = $("confirmDlg");
+
+  const persist = () => store.write(JSON.stringify(notes));
+  const getNote = (id) => notes.find((n) => n.id === id);
+  const makeId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+  function formatDate(ts) {
+    const d = new Date(ts);
+    const sameDay = d.toDateString() === new Date().toDateString();
+    return sameDay
+      ? d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
+      : d.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+  }
+
+  // ---------- List ----------
+  function renderList() {
+    const q = searchEl.value.trim().toLowerCase();
+    const shown = notes
+      .filter((n) => !q || (n.title + " " + n.body).toLowerCase().includes(q))
+      .sort((a, b) => b.updated - a.updated);
+
+    notesEl.textContent = "";
+
+    if (!shown.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = q
+        ? "No notes match your search."
+        : "No notes yet. Tap New note to write your first one.";
+      notesEl.appendChild(li);
+      return;
+    }
+
+    for (const n of shown) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.className = "note-row";
+
+      const t = document.createElement("span");
+      t.className = "note-title";
+      t.textContent = n.title || "Untitled";
+
+      const p = document.createElement("span");
+      p.className = "note-preview";
+      p.textContent = n.body.split("\n").find((l) => l.trim()) || "No text";
+
+      const d = document.createElement("span");
+      d.className = "note-date";
+      d.textContent = formatDate(n.updated);
+
+      btn.append(t, p, d);
+      btn.addEventListener("click", () => openNote(n.id, true));
+      li.appendChild(btn);
+      notesEl.appendChild(li);
+    }
+  }
+
+  // ---------- Navigation ----------
+  function showList() {
+    editView.classList.remove("active");
+    listView.classList.add("active");
+    currentId = null;
+    renderList();
+  }
+
+  function showEditor() {
+    listView.classList.remove("active");
+    editView.classList.add("active");
+  }
+
+  function openNote(id, pushHistory) {
+    const n = getNote(id);
+    if (!n) return;
+    currentId = id;
+    titleEl.value = n.title;
+    bodyEl.value = n.body;
+    savedEl.textContent = "";
+    showEditor();
+    if (pushHistory) { try { history.pushState({ editing: true }, ""); } catch {} }
+    if (!n.title && !n.body) titleEl.focus();
+  }
+
+  function newNote() {
+    const n = { id: makeId(), title: "", body: "", updated: Date.now() };
+    notes.push(n);
+    openNote(n.id, true);
+  }
+
+  // Drop a note that was opened but never filled in.
+  function discardIfEmpty() {
+    const n = getNote(currentId);
+    if (n && !n.title.trim() && !n.body.trim()) {
+      notes = notes.filter((x) => x.id !== n.id);
+      persist();
+    }
+  }
+
+  function closeEditor() {
+    flushSave();
+    discardIfEmpty();
+    showList();
+  }
+
+  // ---------- Saving ----------
+  function saveNow() {
+    const n = getNote(currentId);
+    if (!n) return;
+    n.title = titleEl.value;
+    n.body = bodyEl.value;
+    n.updated = Date.now();
+    persist();
+    savedEl.textContent = "Saved";
+  }
+
+  function flushSave() {
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; saveNow(); }
+  }
+
+  function queueSave() {
+    savedEl.textContent = "";
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => { saveTimer = null; saveNow(); }, 400);
+  }
+
+  // ---------- Events ----------
+  $("newBtn").addEventListener("click", newNote);
+  searchEl.addEventListener("input", renderList);
+  titleEl.addEventListener("input", queueSave);
+  bodyEl.addEventListener("input", queueSave);
+
+  // In-app Back button goes through history so the Android back button behaves the same way.
+  $("backBtn").addEventListener("click", () => {
+    if (history.state && history.state.editing) history.back();
+    else closeEditor();
+  });
+  window.addEventListener("popstate", () => {
+    if (editView.classList.contains("active")) closeEditor();
+  });
+
+  $("deleteBtn").addEventListener("click", () => dlg.showModal());
+  $("dlgCancel").addEventListener("click", () => dlg.close());
+  $("dlgConfirm").addEventListener("click", () => {
+    notes = notes.filter((n) => n.id !== currentId);
+    persist();
+    dlg.close();
+    if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+    if (history.state && history.state.editing) history.back();
+    else showList();
+  });
+
+  // Save if the app is backgrounded mid-edit.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) flushSave();
+  });
+
+  renderList();
+})();
+</script>
+</body>
+</html>
