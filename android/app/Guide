@@ -1,0 +1,109 @@
+HTML to APK: my workflow notes
+
+Build an Android APK from a plain HTML/CSS/JS app without installing Android Studio. Capacitor wraps the web app, GitHub Actions builds the APK in the cloud.
+
+First project: Notepad (com.overman.notepad), repo github.com/Overman0101/notepad-app.
+
+How it fits together
+Write the app as a single index.html (HTML, CSS, JS inside).
+Capacitor wraps it in an Android project (the android folder).
+Push to GitHub. A workflow file tells GitHub to build the APK.
+Download the APK from the Actions tab, copy it to the phone, install.
+One-time setup (already done on this PC)
+Node.js installed (v24).
+Git installed (git-scm.com).
+GitHub account.
+Git identity set:
+  git config --global user.name "Overman0101"
+  git config --global user.email "my-github-email"
+New project, step by step
+
+Run all commands in the project folder, for example C:\Users\cp360admin\my-app.
+
+Create the folder and a www subfolder, then put index.html inside www.
+   mkdir www
+Set up the project and Capacitor. Keep the three Capacitor versions identical.
+   npm init -y
+   npm install @capacitor/core @capacitor/cli @capacitor/android
+   npx cap init "App Name" com.overman.appname --web-dir=www
+   npx cap add android
+   npx cap sync
+
+Every line should show a green check mark. 3. Create .gitignore containing one line:
+
+   node_modules
+Create .github\workflows\build-apk.yml (contents below).
+Make an empty repo on github.com (no README), then:
+   git init
+   git add .
+   git commit -m "First version"
+   git branch -M main
+   git remote add origin https://github.com/Overman0101/REPO-NAME.git
+   git push -u origin main
+On GitHub open Actions, wait for the green check (3 to 5 minutes), open the run, download the artifact (zip), unzip, copy app-debug.apk to the phone, tap to install, allow unknown sources.
+Updating an existing app
+Edit www\index.html.
+Push:
+   git add .
+   git commit -m "What I changed"
+   git push
+A new APK builds automatically. Download it from Actions again. Installing over the old one keeps its notes as long as the app ID is the same.
+Workflow file: .github/workflows/build-apk.yml
+yaml
+name: Build APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Copy web files into the Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+Things that tripped me up (and the fixes)
+npm cap vs npx cap: it's npx cap. npm cap doesn't exist.
+"web assets directory must contain an index.html": index.html has to be inside www, not the project root.
+npx cap open android fails: it needs Android Studio. Not needed here, since the cloud builds the APK.
+npx cap android is not a command: the real ones are init, add android, sync, open android.
+Capacitor versions must match: core, cli, and android packages on the same version. Check with npm ls @capacitor/core @capacitor/cli @capacitor/android.
+Don't run npm audit fix --force: it bumped one package and caused a version mismatch. The audit warnings are in build tooling, not the APK.
+"Author identity unknown" on commit: set user.name and user.email (see setup), then commit again.
+src refspec main does not match any: no commit exists yet. Fix the commit first, then push.
+"LF will be replaced by CRLF" warnings: harmless, ignore.
+App ID is permanent: com.overman.notepad identifies the app on the phone. Pick it before the first install.
+A folder getting recreated wipes the setup: check with dir that android, www, node_modules, package.json, and capacitor.config.json exist before committing.
+Good to know
+The APK is a debug build: fine for personal use and sideloading. Publishing to the Play Store needs a signed release build.
+localStorage works inside the Capacitor WebView, so data persists on the phone.
+The Android back button works with the web app through history.pushState.
+Changing the app name, icon, or splash screen is a later step (the @capacitor/assets tool can generate icons from one image).
